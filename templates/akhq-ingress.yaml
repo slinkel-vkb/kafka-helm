@@ -1,0 +1,31 @@
+{{- if .Values.akhq.enabled }}
+{{- if .Values.akhq.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Release.Name }}-akhq
+  labels:
+    app.kubernetes.io/name: akhq
+    app.kubernetes.io/component: {{ .Values.component | default "kafka"}}
+    {{- include "vkb.labels" $ | nindent 4 }}
+spec:
+  {{- if .Values.akhq.ingress.className }}
+  ingressClassName: {{ .Values.akhq.ingress.className }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.akhq.ingress.hostname }}
+      http:
+        paths:
+          - path: "/"
+            pathType: "Prefix"
+            backend:
+              service:
+                name: {{ .Release.Name }}-akhq
+                port:
+                  name: http
+  {{- if .Values.akhq.ingress.tls }}
+  tls:
+    {{- .Values.akhq.ingress.tls | toYaml | nindent 4 }}
+  {{- end }}
+{{- end }}
+{{- end }}

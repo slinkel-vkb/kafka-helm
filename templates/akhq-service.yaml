@@ -1,0 +1,21 @@
+{{- if .Values.akhq.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-akhq
+  labels:
+    app.kubernetes.io/name: akhq
+    app.kubernetes.io/component: {{ .Values.component | default "kafka"}}
+    {{- include "vkb.labels" $ | nindent 4 }}
+spec:
+  ports:
+    - name: http
+      port: 80
+      targetPort: http-app
+  selector:
+    run: akhq
+    app.kubernetes.io/component: {{ .Values.component | default "kafka"}}
+    {{- include "vkb.selectorLabels" $ | nindent 4 }}
+  sessionAffinity: None
+  type: ClusterIP
+{{- end }}

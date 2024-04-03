@@ -1,0 +1,133 @@
+{{- if .Values.akhq.enabled }}
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: {{ .Release.Name }}-akhq-config
+  labels:
+    app.kubernetes.io/name: akhq-config
+    app.kubernetes.io/component: {{ .Values.component | default "kafka"}}
+    {{- include "vkb.labels" $ | nindent 4 }}
+data:
+  application.yml: |
+    micronaut:
+      security:
+        {{- if .Values.akhq.security.enabled }}
+        enabled: true
+        oauth2:
+          enabled: true
+          clients:
+            keycloak:
+              client-id: "${CLIENT_ID}"
+              client-secret: "${CLIENT_SECRET}"
+              openid:
+                issuer: "${OPEN_ID_SERVER}"
+        token:
+          jwt:
+            signatures:
+              secret:
+                generator:
+                  secret: {{ printf "%s%s" (randAlpha 1) (randAlphaNum 31) }}
+        redirect:
+          login-success: "/ui"
+          forbidden:
+            url: "/ui/login/forbidden"
+          unauthorized:
+            url: "/ui/login/unauthorized"
+          login-failure: "/ui/login/failed"
+          logout:  "/ui"
+        intercept-url-map:
+          - pattern: "/ui/**"
+            access: "isAnonymous()"
+          - pattern: "/oauth/**"
+            access: "isAnonymous()"
+          - pattern: "/static/**"
+            access: "isAnonymous()"
+          - pattern: "/swagger/**"
+            access: "isAnonymous()"
+        {{- end }}
+    akhq:
+      server:
+        access-log:
+          enabled: false
+      clients-defaults:
+        consumer:
+          properties:
+            isolation.level: read_committed
+      connections:
+        local:
+          properties:
+            bootstrap.servers: "${KAFKA_BOOTSTRAP_SERVERS}"
+            sasl.jaas.config: "${KAFKA_SASL_JAAS_CONFIG:default}"
+            sasl.login.callback.handler.class: ${KAFKA_SASL_LOGIN_CALLBACK_HANDLER:org.apache.kafka.common.security.plain.internals.PlainServerCallbackHandler}
+            security.protocol: "${KAFKA_SECURITY_PROTOCOL:PLAINTEXT}"
+            sasl.mechanism: "${KAFKA_SASL_MECHANISM:GSSAPI}"
+      pagination:
+        page-size: 25 # number of elements per page (default : 25)
+        threads: 4 # Number of parallel threads to resolve page
+      topic:
+        retention: 172800000 # default retention period when creating topic
+        partition: 1 #  default number of partition when creating topic
+        replication: ${KAFKA_REPLICATION_FACTOR:1} # default number of replicas when creating topic
+        internal-regexps: # list of regexp to be considered as internal (internal topic can't be deleted or updated)
+          - "^_.*$"
+          - "^.*_schemas$"
+          - "^.*connect-config$"
+          - "^.*connect-offsets$1"
+          - "^.*connect-status$"
+        stream-regexps: # list of regexp to be considered as internal stream topic
+          - "^.*-changelog$"
+          - "^.*-repartition$"
+          - "^.*-rekey$"
+        skip-consumer-groups: false # Skip loading consumer group information when showing topics
+        skip-last-record: false # Skip loading last record date information when showing topics
+        show-all-consumer-groups: false # Expand list of consumer groups instead of showing one.
+        # Retry options for topic operations
+        retry:
+          topic-exists: # Delay between retries when checking for existence of newly created topics. This is needed as it might take the kafka broker a few seconds to create new topics.
+            delay: "3s"
+      # Topic display data options (optional)
+      topic-data:
+        size: 50 # max record per page (default: 50)
+        poll-timeout: 1000 # The time, in milliseconds, spent waiting in poll if data is not available in the buffer.
+        kafka-max-message-length: 1000000 # Max message length allowed to send to UI when retrieving a list of records in bytes.
+      # Ui Global Options (optional)
+      ui-options:
+        topic:
+          default-view: HIDE_INTERNAL  # default list view (ALL, HIDE_INTERNAL, HIDE_INTERNAL_STREAM, HIDE_STREAM). Overrides default
+          skip-consumer-groups: false # Skip loading consumer group information when showing topics. Overrides default
+          skip-last-record: true  # Skip loading last record date information when showing topics.  Overrides default
+          show-all-consumer-groups: true # Expand list of consumer groups instead of showing one. Overrides default.
+        topic-data:
+          sort: NEWEST # default sort order (OLDEST, NEWEST) (default: OLDEST).  Overrides default
+      {{- if .Values.akhq.security.enabled }}
+      # Auth & Roles (optional)
+      security:
+        default-group: no-roles
+        roles:
+          topic-data-read:
+            - resources: [ "SCHEMA", "TOPIC", "CONSUMER_GROUP", "TOPIC_DATA" ]
+              actions: [ "READ" ]
+        groups:
+          simple-reader:
+            - role: topic-data-read
+              patterns: [ ".*-tp" ]
+        oidc:
+          enabled: true
+          providers:
+            keycloak:
+              label: "Login with {{ .Values.akhq.security.name | default "OIDC" }}"
+              username-field: {{ .Values.akhq.security.usernameField | default "preferred_username" }}
+              groups-field: {{ .Values.akhq.security.groupsField | default "role" }}
+              default-group: {{ .Values.akhq.security.defaultGroup | default "no-roles" }}
+              groups:
+                - name: {{ .Values.akhq.security.adminGroup | default "admin" }}
+                  groups:
+                    - admin
+                - name: {{ .Values.akhq.security.readerGroup | default "reader" }}
+                  groups:
+                    - simple-reader
+      {{- end }}
+binaryData:
+  cacerts: |
+    {{ .Files.Get "cacerts.jks" | b64enc | nindent 4 }}
+{{- end }}

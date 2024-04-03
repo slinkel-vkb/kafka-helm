@@ -1,0 +1,91 @@
+{{- if .Values.akhq.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-akhq
+  labels:
+    app.kubernetes.io/name: akhq
+    app.kubernetes.io/component: {{ .Values.component | default "kafka"}}
+    {{- include "vkb.labels" $ | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      run: akhq
+      {{- include "vkb.selectorLabels" $ | nindent 6 }}
+  strategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        run: akhq
+        app.kubernetes.io/component: {{ .Values.component | default "kafka"}}
+        {{- include "vkb.selectorLabels" $ | nindent 8 }}
+    spec:
+      containers:
+        - name: main
+          env:
+            {{- range $name, $value := .Values.akhq.env }}
+            - name: {{ $name }}
+              value: {{ tpl $value (dict "g" $ "Template" $.Template) | quote }}
+            {{- end }}
+            {{- if .Values.akhq.security.enabled }}
+            - name: OPEN_ID_SERVER
+              value: {{ .Values.akhq.security.oidcServer }}
+            - name: ID_SERVER_JWKS_URI
+              value: {{ .Values.akhq.security.jwksUri }}
+            - name: CLIENT_ID
+              value: {{ .Values.akhq.security.clientId }}
+            - name: CLIENT_SECRET
+              value: {{ .Values.akhq.security.clientSecret }}
+            {{- end }}
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: {{ .Release.Name }}-kafka:9092
+          image: {{ .Values.akhq.image }}
+          ports:
+            - name: http-app
+              containerPort: 8080
+              protocol: TCP
+            - name: http-management
+              containerPort: 28081
+              protocol: TCP
+          resources:
+            limits:
+              memory: 1024Mi
+            requests:
+              cpu: 10m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: "/health"
+              port: http-management
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            successThreshold: 1
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: "/health"
+              port: http-management
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            successThreshold: 1
+            failureThreshold: 3
+          volumeMounts:
+            - mountPath: /tmp
+              name: tmp
+            - name: config
+              mountPath: /app/application.yml
+              subPath: application.yml
+            - name: config
+              mountPath: /opt/java/openjdk/lib/security/cacerts
+              subPath: cacerts
+      volumes:
+        - name: config
+          configMap:
+            name: {{ .Release.Name }}-akhq-config
+        - emptyDir: {}
+          name: tmp
+{{- end }}

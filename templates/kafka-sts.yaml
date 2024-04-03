@@ -1,0 +1,86 @@
+{{- if .Values.kafka.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ .Release.Name }}-kafka-broker
+  labels:
+    app.kubernetes.io/name: kafka-broker
+    app.kubernetes.io/component: {{ .Values.component | default "kafka"}}
+    {{- include "vkb.labels" $ | nindent 4 }}
+spec:
+  serviceName: kafka-broker
+  replicas: 1
+  selector:
+    matchLabels:
+      run: kafka-broker
+      {{- include "vkb.selectorLabels" $ | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        run: kafka-broker
+        app.kubernetes.io/component: kafka-zookeeper
+        {{- include "vkb.selectorLabels" $ | nindent 8 }}
+    spec:
+      terminationGracePeriodSeconds: 10
+      containers:
+      - name: kafka-broker
+        image: {{ .Values.kafka.image }}
+        env:
+          - name: KAFKA_ENABLE_KRAFT
+            value: "yes"
+          - name: ALLOW_PLAINTEXT_LISTENER
+            value: "yes"
+          - name: KAFKA_CFG_NODE_ID
+            value: "0"
+          - name: KAFKA_CFG_PROCESS_ROLES
+            value: "controller,broker"
+          {{- if .Values.kafka.externalAccess.enabled }}
+          - name: KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP
+            value: CLIENT:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+          - name: KAFKA_CFG_LISTENERS
+            value: CLIENT://:9092,EXTERNAL://:9093,CONTROLLER://:9094
+          - name: KAFKA_CFG_ADVERTISED_LISTENERS
+            value: CLIENT://{{ .Release.Name }}-kafka:9092,EXTERNAL://{{ (list .Values.kafka.externalAccess.hostname .Values.externalAccess.nodePort) | join ":" }}
+          {{- else }}
+          - name: KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP
+            value: CLIENT:PLAINTEXT,CONTROLLER:PLAINTEXT
+          - name: KAFKA_CFG_LISTENERS
+            value: CLIENT://:9092,CONTROLLER://:9094
+          - name: KAFKA_CFG_ADVERTISED_LISTENERS
+            value: CLIENT://{{ .Release.Name }}-kafka:9092
+          {{- end }}
+          - name: KAFKA_CFG_INTER_BROKER_LISTENER_NAME
+            value: CLIENT
+          - name: KAFKA_CFG_CONTROLLER_QUORUM_VOTERS
+            value: 0@{{ .Release.Name }}-kafka:9094
+          - name: KAFKA_CFG_CONTROLLER_LISTENER_NAMES
+            value: CONTROLLER
+        ports:
+          - name: kafka-app-int
+            containerPort: 9092
+          - name: kafka-app-ctl
+            containerPort: 9094
+          {{- if .Values.kafka.externalAccess.enabled }}
+          - name: kafka-app-ext
+            containerPort: 9093
+          {{- end }}
+        resources:
+          requests:
+            cpu: 60m
+            memory: 1500Mi
+        volumeMounts:
+        - name: kafka-data
+          mountPath: /bitnami
+  volumeClaimTemplates:
+  - metadata:
+      name: kafka-data
+      labels:
+        {{- include "vkb.selectorLabels" $ | nindent 8 }}
+    spec:
+      accessModes:
+        - ReadWriteOnce
+      storageClassName: {{ .Values.kafka.pvc.className }}
+      resources:
+        requests:
+          storage: 1Gi
+{{- end }}

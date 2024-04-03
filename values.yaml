@@ -1,0 +1,35 @@
+commonLabels: {}
+application: infrastructure
+component: kafka
+
+kafka:
+  image: "bitnami/kafka:3.4.0"
+  enabled: true
+  pvc:
+    className: ""
+  externalAccess:
+    enabled: false
+    nodePort: 32092
+    hostname: "resolvable-hostname"
+
+akhq:
+  image: "tchiotludo/akhq:dev"
+  enabled: true
+  env: {}
+  security:
+    enabled: false
+    name: KeyCloak
+    oidcServer: ""
+    jwksUri: ""
+    clientId: ""
+    clientSecret: ""
+    usernameField: preferred_username
+    groupsField: role
+    defaultGroup: no-roles
+    adminGroup: admin
+    readerGroup: reader
+  ingress:
+    enabled: true
+    className: ""
+    hostname: ""
+    tls: {}
